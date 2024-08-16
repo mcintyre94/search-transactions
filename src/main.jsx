@@ -1,11 +1,14 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App.jsx";
-import "./index.css";
 import { QueryClient } from "@tanstack/react-query";
 import { createIDBPersister } from "./idb-persister";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
+
+import "@mantine/core/styles.css";
+import { MantineProvider } from "@mantine/core";
+import FetchTransactions from "./routes/FetchTransactions";
+import { router } from "./routes/router";
 
 // Will persist query data to IndexedDB
 const queryClientPersister = createIDBPersister();
@@ -24,13 +27,6 @@ const queryClient = new QueryClient({
   },
 });
 
-const router = createBrowserRouter([
-  {
-    path: "/fetch-transactions",
-    element: <div>Fetch transactions here!</div>,
-  },
-]);
-
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <PersistQueryClientProvider
@@ -38,8 +34,9 @@ createRoot(document.getElementById("root")).render(
       maxAge={Infinity}
       persistOptions={{ persister: queryClientPersister }}
     >
-      <RouterProvider router={router} />
-      {/* <App /> */}
+      <MantineProvider forceColorScheme="dark">
+        <RouterProvider router={router} />
+      </MantineProvider>
     </PersistQueryClientProvider>
   </StrictMode>
 );
