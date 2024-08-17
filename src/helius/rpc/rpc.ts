@@ -53,9 +53,11 @@ function createFetchTransport(heliusApiUrl: HeliusApiUrl): RpcTransport {
     if (method === "getTransactionHistory") {
       const { address, ...otherParams } = params as GetTransactionHistoryParams;
       url.pathname += `addresses/${address}/transactions`;
-      Object.entries(otherParams).forEach(([k, v]) =>
-        url.searchParams.append(k, String(v))
-      );
+      Object.entries(otherParams).forEach(([k, v]) => {
+        if (v) {
+          url.searchParams.append(k, String(v));
+        }
+      });
     }
 
     const response = await fetch(url, { signal: args[0].signal });
@@ -95,9 +97,10 @@ function createSplitTransport({
   };
 }
 
-export function createHeliusRpc(
-  apiKey: string
-): Rpc<SolanaRpcApiMainnet & HeliusApi> {
+// add mainnet functions if we need them, typescript is faster without them
+export type HeliusRpc = Rpc</* SolanaRpcApiMainnet */ HeliusApi>;
+
+export function createHeliusRpc(apiKey: string): HeliusRpc {
   const heliusApiUrl = makeHeliusApiUrl(apiKey);
   const heliusJsonRpcUrl = makeHeliusJsonRpcUrl(apiKey);
 

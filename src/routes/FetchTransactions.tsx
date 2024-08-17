@@ -1,20 +1,28 @@
-import { Button, Container, Fieldset, FileInput, Group, PasswordInput, Stack } from "@mantine/core";
-import React from "react";
+import { Button, Container, FileInput, Group, PasswordInput, Stack } from "@mantine/core";
+import { DateInput } from "@mantine/dates"
+import React, { useMemo } from "react";
 import { ActionFunctionArgs, Form } from "react-router-dom";
 import { z } from "zod";
 import { OrbitAccount, orbitAccountSchema } from "../orbit-accounts/orbitAccount";
 import { createHeliusRpc } from "../helius/rpc/rpc";
-import { address } from "@solana/web3.js";
+
+import "@mantine/dates/styles.css";
+import { fetchAndSaveAddressQueryData, getAddressQueryData } from "../queries/addressQueries";
+
 
 type FormDataUpdates = {
     heliusApiKey: string;
     orbitAccounts: File;
+    fetchSince: string;
 }
 
 export async function action({ request }: ActionFunctionArgs) {
     const formData = await request.formData();
     // formData doesn't include files
     const updates = Object.fromEntries(formData) as unknown as FormDataUpdates;
+
+    console.log(updates, updates.fetchSince, typeof updates.fetchSince);
+    // return 'ok';
 
     // validate the file as a list of accounts
     // if any issues (including invalid addresses), just error, user probably chose the wrong file
@@ -29,16 +37,31 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const heliusRpc = createHeliusRpc(updates.heliusApiKey);
-    const transactions = await heliusRpc.getTransactionHistory({ address: accounts[0].address, commitment: 'confirmed', limit: 10 }).send({ abortSignal: request.signal });
-    // const assets = await heliusRpc.getAssetBatch({ ids: [address('DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263'), address('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')] }).send({ abortSignal: request.signal });
+    const fetchSinceDate = new Date(updates.fetchSince);
 
-    console.log({ transactions });
+    for (const account of accounts) {
+        console.log(`Fetching transaction data for ${account.address}`);
+        await fetchAndSaveAddressQueryData(account, heliusRpc, fetchSinceDate);
+    }
 
+    const addressData = getAddressQueryData();
+
+    console.log({ addressData });
 
     return 'ok';
 }
 
+function getStartOfYearDate() {
+    const date = new Date();
+    date.setMonth(0);
+    date.setDate(1);
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+
 export default function FetchTransactions() {
+    const startOfYearDate = useMemo(() => getStartOfYearDate(), []);
+
     return (
         <Container py={32}>
             <Form method='post' encType='multipart/form-data'>
@@ -59,6 +82,18 @@ export default function FetchTransactions() {
                         clearable
                         required
                     />
+
+                    <DateInput
+                        label="Fetch since"
+                        description="Fetch transactions since this date. Earlier dates will fetch more transactions, which will use more Helius RPC requests and take longer"
+                        name="fetchSince"
+                        clearable
+                        required
+                        defaultDate={startOfYearDate}
+                        minDate={new Date(2020, 4, 16)}
+                        valueFormat="DD MMM YYYY HH:mm"
+                    />
+
 
                     <Group><Button type="submit">Fetch transactions</Button></Group>
                 </Stack>
