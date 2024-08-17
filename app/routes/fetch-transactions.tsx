@@ -1,14 +1,17 @@
 import { Button, Container, FileInput, Group, PasswordInput, Stack } from "@mantine/core";
 import { DateInput } from "@mantine/dates"
-import React, { useMemo } from "react";
-import { ActionFunctionArgs, Form } from "react-router-dom";
+import { useMemo } from "react";
+import { Form } from "react-router-dom";
 import { z } from "zod";
 import { OrbitAccount, orbitAccountSchema } from "../orbit-accounts/orbitAccount";
 import { createHeliusRpc } from "../helius/rpc/rpc";
 
-import "@mantine/dates/styles.css";
 import { fetchAndSaveAddressQueryData, getAddressQueryData } from "../queries/addressQueries";
 import { fetchAndSaveAssetsQueryData, getAssetsQueryData } from "../queries/assetQueries";
+
+import "@mantine/dates/styles.css";
+import { ClientActionFunctionArgs } from "@remix-run/react";
+import { ClientOnly } from "remix-utils/client-only";
 
 
 type FormDataUpdates = {
@@ -17,7 +20,7 @@ type FormDataUpdates = {
     fetchSince: string;
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function clientAction({ request }: ClientActionFunctionArgs) {
     const formData = await request.formData();
     // formData doesn't include files
     const updates = Object.fromEntries(formData) as unknown as FormDataUpdates;
@@ -101,17 +104,19 @@ export default function FetchTransactions() {
                         required
                     />
 
-                    <DateInput
-                        label="Fetch since"
-                        description="Fetch transactions since this date. Earlier dates will fetch more transactions, which will use more Helius RPC requests and take longer"
-                        name="fetchSince"
-                        clearable
-                        required
-                        defaultDate={startOfYearDate}
-                        minDate={new Date(2020, 4, 16)}
-                        valueFormat="DD MMM YYYY HH:mm"
-                    />
-
+                    <ClientOnly>
+                        {() =>
+                            <DateInput
+                                label="Fetch since"
+                                description="Fetch transactions since this date. Earlier dates will fetch more transactions, which will use more Helius RPC requests and take longer"
+                                name="fetchSince"
+                                clearable
+                                required
+                                defaultDate={startOfYearDate}
+                                minDate={new Date(2020, 4, 16)}
+                                valueFormat="DD MMM YYYY HH:mm"
+                            />}
+                    </ClientOnly>
 
                     <Group><Button type="submit">Fetch transactions</Button></Group>
                 </Stack>
