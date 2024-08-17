@@ -2,13 +2,13 @@ import type { MetaFunction } from "@remix-run/node";
 import { Form, useActionData, useSubmit } from "react-router-dom"
 import { getAddressQueryData } from "../queries/addressQueries"
 import { getAssetsQueryData } from "../queries/assetQueries"
-import { AppShell, Badge, Checkbox, Container, CopyButton, Group, ScrollArea, Stack, Text } from "@mantine/core"
+import { AppShell, Badge, Button, Checkbox, Container, CopyButton, Group, PasswordInput, ScrollArea, Stack, Text, TextInput } from "@mantine/core"
 import { useMemo } from "react"
 import { useIsRestoring } from "@tanstack/react-query"
 import { Address, Signature } from "@solana/web3.js"
 import { IconCopy } from "@tabler/icons-react"
 import { TransactionSummary } from "../helius/summarise-transaction"
-import { ClientActionFunctionArgs } from "@remix-run/react";
+import { ClientActionFunctionArgs, useFetcher } from "@remix-run/react";
 import { TransactionRow } from "~/components/TransactionRow";
 
 
@@ -76,7 +76,6 @@ function AddressCheckboxes({ addresses, selectedAddresses }: AddressCheckboxesPr
 
   return (
     <Form method="POST" onChange={(e) => {
-      console.log('submitting form...');
       submit(e.currentTarget)
     }}>
       <Stack gap='lg'>
@@ -240,6 +239,9 @@ export default function DisplayTransactions() {
   // For now I've filtered to only where feePayer === address, so can us that as address for now
   const filteredTransactions = Object.values(filteredAddresses).flatMap(t => t.summarisedTransactions)
 
+  const fetcher = useFetcher();
+
+  console.log({ fetcherData: fetcher.data });
 
   return (
     <AppShell
@@ -261,7 +263,34 @@ export default function DisplayTransactions() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Transactions transactionSummaries={filteredTransactions} assetsData={assets} addressesData={addresses} />
+        <Container>
+          <Stack gap='lg'>
+            <fetcher.Form method="POST" action="/api/generate-filters">
+              <Stack gap='md'>
+                <PasswordInput
+                  label="Claude API key"
+                  description="Will be used to generate filters"
+                  name="claudeApiKey"
+                  autoComplete="off"
+                  required
+                />
+                <TextInput
+                  label="Filter Transactions"
+                  placeholder="show transactions to Jupiter in the last week"
+                  name="filterDescription"
+                  autoComplete="off"
+                  required
+                />
+                <Group><Button type='submit'>Filter</Button></Group>
+              </Stack>
+            </fetcher.Form>
+
+            {/* <Divider /> */}
+
+
+            <Transactions transactionSummaries={filteredTransactions} assetsData={assets} addressesData={addresses} />
+          </Stack>
+        </Container>
       </AppShell.Main>
     </AppShell>
   )

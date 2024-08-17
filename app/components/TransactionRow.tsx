@@ -79,7 +79,6 @@ function getAssetFromEvent(event: TransactionSummary['events'][0], tokensData: A
                 image: tokenData.image ?? undefined,
             };
         }
-        console.log({ uiAmount: event.uiAmount, decimals: tokenData.decimals });
         const amountAsBigint = BigInt(Math.floor(Number(event.uiAmount) * 10 ** Number(tokenData.decimals)));
         const formattedAmount = formatNumber(amountAsBigint, Number(tokenData.decimals));
         return {
