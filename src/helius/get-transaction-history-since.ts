@@ -33,23 +33,30 @@ export async function getFullTransactionHistory(
     // Note: there's a bug where the Helius API returns <100 transactions even when there are enough to return
     // So we can't just detect batches of 100, work around by checking if all are before timestamp
     const batch = await getTransactionHistoryBatch(rpc, address, before);
-    const batchSinceDate = batch.filter((tx) => tx.timestamp >= sinceTimestamp);
 
-    if (batch.length === batchSinceDate.length && batchSinceDate.length > 0) {
+    // Only include transactions where you were fee payer, filters out spam
+    // TODO: might be too aggressive, we'll see
+    const transactionsFilteredByFeePayer = batch.filter(
+      (tx) => tx.feePayer === address
+    );
+
+    const transactionsAfterSinceDate = transactionsFilteredByFeePayer.filter(
+      (tx) => tx.timestamp >= sinceTimestamp
+    );
+
+    if (
+      transactionsFilteredByFeePayer.length ===
+        transactionsAfterSinceDate.length &&
+      transactionsAfterSinceDate.length > 0
+    ) {
       // complete batch to include, continue
-      transactionsSoFar = transactionsSoFar.concat(batchSinceDate);
-
-      console.log("getFullTransactionHistory", {
-        before,
-        batchLength: batch.length,
-        batchSinceDateLength: batchSinceDate.length,
-        newTransactionsSoFar: transactionsSoFar,
-      });
-
-      before = batchSinceDate[batchSinceDate.length - 1].signature;
+      transactionsSoFar = transactionsSoFar.concat(transactionsAfterSinceDate);
+      before =
+        transactionsAfterSinceDate[transactionsAfterSinceDate.length - 1]
+          .signature;
     } else {
       // partial batch, reached our since date, return
-      transactionsSoFar = transactionsSoFar.concat(batchSinceDate);
+      transactionsSoFar = transactionsSoFar.concat(transactionsAfterSinceDate);
       return transactionsSoFar;
     }
   }

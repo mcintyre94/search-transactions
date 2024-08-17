@@ -3,7 +3,7 @@ import { OrbitAccount } from "../orbit-accounts/orbitAccount";
 import {
   summariseParsedTransaction,
   TransactionSummary,
-} from "../helius/summarise";
+} from "../helius/summarise-transaction";
 import { HeliusRpc } from "../helius/rpc/rpc";
 import { getFullTransactionHistory } from "../helius/get-transaction-history-since";
 import { queryClient } from "../query-client";

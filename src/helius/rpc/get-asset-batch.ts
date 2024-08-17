@@ -25,6 +25,10 @@ type FungibleTokenItem = Readonly<{
   id: Address; // the token mint address
   content: {
     files: readonly ItemContentFile[];
+    metadata: Readonly<{
+      name: string;
+      symbol: string;
+    }>;
   };
   token_info: Readonly<{
     decimals: number;
@@ -36,6 +40,9 @@ type V1NFTItem = Readonly<{
   id: Address; // NFT address
   content: {
     files: readonly ItemContentFile[];
+    metadata: Readonly<{
+      name: string;
+    }>;
   };
 }>;
 

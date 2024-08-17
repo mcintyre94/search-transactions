@@ -8,6 +8,7 @@ import { createHeliusRpc } from "../helius/rpc/rpc";
 
 import "@mantine/dates/styles.css";
 import { fetchAndSaveAddressQueryData, getAddressQueryData } from "../queries/addressQueries";
+import { fetchAndSaveAssetsQueryData, getAssetsQueryData } from "../queries/assetQueries";
 
 
 type FormDataUpdates = {
@@ -46,7 +47,24 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const addressData = getAddressQueryData();
 
-    console.log({ addressData });
+    const assetIds = Object
+        .values(addressData)
+        .flatMap(({ summarisedTransactions }) => summarisedTransactions
+            .flatMap(tx => tx.events.flatMap(e => {
+                if (e.kind === 'received_nft' || e.kind === 'sent_nft') {
+                    return [e.assetId]
+                }
+                if (e.kind === 'received_token' || e.kind === 'sent_token') {
+                    return [e.mint]
+                }
+                return [];
+            })))
+
+    await fetchAndSaveAssetsQueryData(new Set(assetIds), heliusRpc);
+
+    const assetsData = getAssetsQueryData();
+
+    console.log({ assetsData });
 
     return 'ok';
 }
