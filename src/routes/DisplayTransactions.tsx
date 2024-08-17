@@ -1,13 +1,15 @@
 import { ActionFunctionArgs, Form, LoaderFunctionArgs, useActionData, useLoaderData, useSubmit } from "react-router-dom"
 import { getAddressQueryData } from "../queries/addressQueries"
 import { getAssetsQueryData } from "../queries/assetQueries"
-import { AppShell, Badge, Checkbox, Container, CopyButton, Group, ScrollArea, Stack, Text } from "@mantine/core"
+import { AppShell, Badge, Button, Checkbox, Container, CopyButton, Group, ScrollArea, Stack, Text } from "@mantine/core"
 import React, { useCallback, useMemo } from "react"
 import { QueryClient, useIsRestoring, useQueries, useQuery } from "@tanstack/react-query"
 import { queryClient } from "../query-client"
-import { Address } from "@solana/web3.js"
+import { Address, Signature } from "@solana/web3.js"
 import { useClipboard } from "@mantine/hooks"
 import { IconCopy } from "@tabler/icons-react"
+import { TransactionSummary } from "../helius/summarise-transaction"
+import { TransactionRow } from "../components/TransactionRow"
 
 type ActionData = {
     selectedAddresses: Address[];
@@ -85,6 +87,134 @@ function AddressCheckboxes({ addresses, selectedAddresses }: AddressCheckboxesPr
     )
 }
 
+type DateString = string;
+
+type TransactionRow = {
+    dateAsYyyymmdd: DateString;
+    signature: Signature;
+    feePayer: Address;
+    success: boolean;
+    knownApp: TransactionSummary['knownApp'];
+    events: TransactionSummary['events'];
+};
+
+function createTransactionRowForSummary(transactionSummary: TransactionSummary): TransactionRow {
+    const date = new Date(transactionSummary.timestamp * 1000);
+
+    return {
+        dateAsYyyymmdd: date.toISOString().split('T')[0],
+        signature: transactionSummary.signature,
+        feePayer: transactionSummary.feePayer,
+        success: transactionSummary.success,
+        knownApp: transactionSummary.knownApp,
+        events: transactionSummary.events,
+    };
+}
+
+type GroupedDates = {
+    dateAsYyyymmdd: string;
+    rows: TransactionRow[];
+}[];
+
+function groupByDate(rows: TransactionRow[]): GroupedDates {
+    if (rows.length === 0) return [];
+
+    const groupedDates: GroupedDates = [];
+
+    for (const row of rows) {
+        const lastGroup = groupedDates[groupedDates.length - 1];
+        if (lastGroup?.dateAsYyyymmdd === row.dateAsYyyymmdd) {
+            lastGroup.rows.push(row);
+            continue;
+        }
+
+        groupedDates.push({
+            dateAsYyyymmdd: row.dateAsYyyymmdd,
+            rows: [row],
+        });
+    }
+
+    return groupedDates;
+}
+
+function formatDate(dateAsYyyymmdd: string) {
+    const activityDate = new Date(dateAsYyyymmdd);
+    const today = new Date();
+    // Remove the time part for accurate date comparison
+    today.setHours(0, 0, 0, 0);
+
+    // Calculate the difference in days
+    const oneDayInMs = 24 * 60 * 60 * 1000;
+    const diffDays = Math.ceil((today.getTime() - activityDate.getTime()) / oneDayInMs);
+
+    if (diffDays === 0) {
+        return 'Today';
+    } else if (diffDays === 1) {
+        return 'Yesterday';
+    }
+    // Format the date as 5 Aug, 2024
+    return activityDate.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+}
+
+type AssetsData = ReturnType<typeof getAssetsQueryData>;
+type AddressesData = ReturnType<typeof getAddressQueryData>;
+
+type ActivityGroupProps = {
+    dateAsYyyymmdd: string;
+    rows: TransactionRow[];
+    addressesData: AddressesData;
+    assetsData: AssetsData;
+};
+
+function TransactionGroup({ dateAsYyyymmdd, rows, addressesData, assetsData }: ActivityGroupProps) {
+    return (
+        <div>
+            <p>{formatDate(dateAsYyyymmdd)}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {rows.map((row, i) => (
+                    <TransactionRow row={row} addressesData={addressesData} assetsData={assetsData} key={i} />
+                ))}
+            </div>
+        </div>
+    );
+}
+
+type TransactionsProps = {
+    transactionSummaries: TransactionSummary[];
+    assetsData: AssetsData;
+    addressesData: AddressesData
+}
+function Transactions({ transactionSummaries, assetsData, addressesData }: TransactionsProps) {
+    const sortedTransactionSummaries = useMemo(() => transactionSummaries.sort((a, b) => b.timestamp - a.timestamp), [transactionSummaries]);
+
+    const groupedTransactionRows = useMemo(() => {
+        const rows = sortedTransactionSummaries.map((t) => createTransactionRowForSummary(t));
+        const grouped = groupByDate(rows);
+        return grouped;
+    }, [sortedTransactionSummaries]);
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {groupedTransactionRows.map(({ dateAsYyyymmdd, rows }, i) => (
+                <TransactionGroup
+                    dateAsYyyymmdd={dateAsYyyymmdd}
+                    rows={rows}
+                    assetsData={assetsData}
+                    addressesData={addressesData}
+                    key={i}
+                />
+            ))}
+        </div>
+    );
+}
+
+
+
+
 export default function DisplayTransactions() {
     // Since we restore the query client, the loader is too early to fetch this data
     // We wait for the restore to be done and then fetch it here
@@ -100,6 +230,10 @@ export default function DisplayTransactions() {
     const filteredAddresses = actionData ? Object.fromEntries(
         Object.entries(addresses).filter(([address]) => selectedAddresses.has(address as Address))
     ) : addresses;
+
+    // For now I've filtered to only where feePayer === address, so can us that as address for now
+    const filteredTransactions = Object.values(filteredAddresses).flatMap(t => t.summarisedTransactions)
+
 
     return (
         <AppShell
@@ -121,9 +255,7 @@ export default function DisplayTransactions() {
             </AppShell.Navbar>
 
             <AppShell.Main>
-                {Object.entries(filteredAddresses).map(([address, data]) => (
-                    <Text key={address}>{data.label} has {data.summarisedTransactions.length} transactions</Text>
-                ))}
+                <Transactions transactionSummaries={filteredTransactions} assetsData={assets} addressesData={addresses} />
             </AppShell.Main>
         </AppShell>
     )

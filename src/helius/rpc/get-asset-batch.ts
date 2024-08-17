@@ -31,7 +31,7 @@ type FungibleTokenItem = Readonly<{
     }>;
   };
   token_info: Readonly<{
-    decimals: number;
+    decimals: BigInt; // could add this as a no bigint exception, but this works for now
   }>;
 }>;
 

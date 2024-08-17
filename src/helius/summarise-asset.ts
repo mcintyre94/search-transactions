@@ -31,7 +31,7 @@ export function summariseAsset(asset: HeliusAsset): SummarisedAsset {
       kind: "fungibleToken",
       name: asset.content.metadata.name,
       symbol: asset.content.metadata.symbol,
-      decimals: asset.token_info.decimals,
+      decimals: Number(asset.token_info.decimals),
       image,
     };
   } else {
