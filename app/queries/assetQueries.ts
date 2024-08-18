@@ -20,6 +20,8 @@ export async function fetchAndSaveAssetsQueryData(
   }
 }
 
+export type AssetsData = Record<Address, SummarisedAsset>;
+
 export function getAssetsQueryData(): Record<Address, SummarisedAsset> {
   const data = queryClient.getQueriesData<SummarisedAsset>({
     queryKey: ["assets"],

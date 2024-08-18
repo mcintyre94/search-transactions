@@ -2,7 +2,7 @@ import type { MetaFunction } from "@remix-run/node";
 import { Form, useActionData, useSubmit } from "react-router-dom"
 import { getAddressQueryData } from "../queries/addressQueries"
 import { getAssetsQueryData } from "../queries/assetQueries"
-import { AppShell, Badge, Button, Checkbox, Container, CopyButton, Group, PasswordInput, ScrollArea, Stack, Text, TextInput } from "@mantine/core"
+import { AppShell, Badge, Button, Checkbox, Container, CopyButton, Group, Loader, PasswordInput, ScrollArea, Stack, Text, TextInput } from "@mantine/core"
 import { useMemo } from "react"
 import { useIsRestoring } from "@tanstack/react-query"
 import { Address, Signature } from "@solana/web3.js"
@@ -10,6 +10,8 @@ import { IconCopy } from "@tabler/icons-react"
 import { TransactionSummary } from "../helius/summarise-transaction"
 import { ClientActionFunctionArgs, useFetcher } from "@remix-run/react";
 import { TransactionRow } from "~/components/TransactionRow";
+import { applyFilter, Filter } from "~/filters/filter-summaries";
+import { d } from "node_modules/@tanstack/react-query-devtools/build/modern/devtools-PtxSnd7z";
 
 
 export const meta: MetaFunction = () => {
@@ -228,7 +230,7 @@ export default function DisplayTransactions() {
   const { addresses, assets } = useMemo(() => ({
     addresses: getAddressQueryData(),
     assets: getAssetsQueryData(),
-    // explanation: want to use restoring
+    // explanation: want to use restoring to re-fetch after restoring the DB
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [restoring]);
 
@@ -236,12 +238,15 @@ export default function DisplayTransactions() {
     Object.entries(addresses).filter(([address]) => selectedAddresses.has(address as Address))
   ) : addresses;
 
-  // For now I've filtered to only where feePayer === address, so can us that as address for now
-  const filteredTransactions = Object.values(filteredAddresses).flatMap(t => t.summarisedTransactions)
+  const transactionsForSelectedAddresses = Object.values(filteredAddresses).flatMap(t => t.summarisedTransactions)
 
   const fetcher = useFetcher();
 
-  console.log({ fetcherData: fetcher.data });
+  if (fetcher.data) {
+    console.log({ fetcherData: fetcher.data });
+  }
+
+  const filteredTransactions = fetcher.data ? applyFilter(transactionsForSelectedAddresses, fetcher.data as Filter, addresses, assets) : transactionsForSelectedAddresses;
 
   return (
     <AppShell
@@ -267,13 +272,6 @@ export default function DisplayTransactions() {
           <Stack gap='lg'>
             <fetcher.Form method="POST" action="/api/generate-filters">
               <Stack gap='md'>
-                <PasswordInput
-                  label="Claude API key"
-                  description="Will be used to generate filters"
-                  name="claudeApiKey"
-                  autoComplete="off"
-                  required
-                />
                 <TextInput
                   label="Filter Transactions"
                   placeholder="show transactions to Jupiter in the last week"
@@ -281,14 +279,13 @@ export default function DisplayTransactions() {
                   autoComplete="off"
                   required
                 />
-                <Group><Button type='submit'>Filter</Button></Group>
+                <Group><Button type='submit' disabled={fetcher.state === "submitting"}>Filter</Button></Group>
               </Stack>
             </fetcher.Form>
 
-            {/* <Divider /> */}
-
-
-            <Transactions transactionSummaries={filteredTransactions} assetsData={assets} addressesData={addresses} />
+            {fetcher.state === "submitting" ? <Loader /> :
+              <Transactions transactionSummaries={filteredTransactions} assetsData={assets} addressesData={addresses} />
+            }
           </Stack>
         </Container>
       </AppShell.Main>

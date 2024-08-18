@@ -40,6 +40,8 @@ export async function fetchAndSaveAddressQueryData(
   });
 }
 
+export type AddressesData = Record<Address, AddressQueryData>;
+
 export function getAddressQueryData(): Record<Address, AddressQueryData> {
   const data = queryClient.getQueriesData<AddressQueryData>({
     queryKey: ["addresses"],

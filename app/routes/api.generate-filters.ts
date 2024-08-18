@@ -3,7 +3,6 @@ import { ActionFunctionArgs } from "react-router-dom";
 // Note: this file needs to run on the server because Claude won't accept requests from a browser
 
 type FormDataUpdates = {
-  claudeApiKey: string;
   filterDescription: string;
 };
 
@@ -19,14 +18,14 @@ export async function action({ request }: ActionFunctionArgs) {
   const updates = Object.fromEntries(formData) as unknown as FormDataUpdates;
 
   // Original reason not to use the Anthropic SDK was because it doesn't work in browser
-  // We're just using the API key in the client from the form, not a shared key on the server
+  // We were just using the API key in the client from the form, not a shared key on the server
   // Also don't think their caching is supported by the API yet
 
   const url = "https://api.anthropic.com/v1/messages";
 
   const headers = {
     "Content-Type": "application/json",
-    "X-API-Key": updates.claudeApiKey,
+    "X-API-Key": process.env.CLAUDE_API_KEY,
     "anthropic-version": "2023-06-01",
     "anthropic-beta": "prompt-caching-2024-07-31",
   };
