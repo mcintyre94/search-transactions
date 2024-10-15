@@ -1,4 +1,5 @@
 import {
+  address,
   getBase58Encoder,
   lamports,
   type Address,
@@ -17,8 +18,20 @@ import type { GetTransactionHistoryResponse } from "./rpc/get-transaction-histor
 type TransactionEvent =
   | { kind: "received_sol"; lamports: bigint; from: Address[] }
   | { kind: "sent_sol"; lamports: bigint; to: Address[] }
-  | { kind: "received_token"; mint: Address; uiAmount: number; from: Address[] }
-  | { kind: "sent_token"; mint: Address; uiAmount: number; to: Address[] }
+  | {
+      kind: "received_token";
+      mint: Address;
+      unitAmount: bigint;
+      decimals: number;
+      from: Address[];
+    }
+  | {
+      kind: "sent_token";
+      mint: Address;
+      unitAmount: bigint;
+      decimals: number;
+      to: Address[];
+    }
   | { kind: "received_nft"; assetId: Address; from?: Address }
   | { kind: "sent_nft"; assetId: Address; to: Address };
 
@@ -36,6 +49,7 @@ const knownApps = {
 } as const;
 
 // This checks the keys in `knownApps` are valid sources
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 type _ParsedHistoryTransactionSourceMapping = {
   [K in ParsedHistoryTransaction["source"]]: (typeof knownApps)[K];
 };
@@ -92,42 +106,159 @@ export function summariseParsedTransaction(
   transaction: ParsedHistoryTransaction,
   forAddress: Address
 ): TransactionSummary {
-  const knownApp = knownApps[transaction.source];
+  /*
+  success: boolean;
+  feePayer: Address;
+  signature: Signature;
+  knownApp?: KnownAppNames;
+  timestamp: number;
+  events: readonly TransactionEvent[];
+  */
 
-  // Group all SOL sent/received
-  let totalSentSol: LamportsUnsafeBeyond2Pow53Minus1 = lamports(0n);
-  let totalReceivedSol: LamportsUnsafeBeyond2Pow53Minus1 = lamports(0n);
+  /*
+  | { kind: "received_sol"; lamports: bigint; from: Address[] }
+  | { kind: "sent_sol"; lamports: bigint; to: Address[] }
+  | { kind: "received_token"; mint: Address; uiAmount: number; from: Address[] }
+  | { kind: "sent_token"; mint: Address; uiAmount: number; to: Address[] }
+  | { kind: "received_nft"; assetId: Address; from?: Address }
+  | { kind: "sent_nft"; assetId: Address; to: Address };
+  */
 
-  // Group events using the same mint
-  // We use number because Helius' API provides floats which may not be integers
-  // just accept slight errors from float math for this use case
+  // Filter out low value SOL transfers, assuming they're likely rent transfers
+  // Value of `getMinimumBalanceForRentExemption` for 200 bytes
+  const minimumSolTransfer = 2282880;
+
+  const events: TransactionEvent[] = [];
+
+  const accountDataForAddress = transaction.accountData.find(
+    (a) => a.account === forAddress
+  );
+
+  const feeForAddress =
+    transaction.feePayer === forAddress ? transaction.fee : 0;
+
+  const nativeBalanceChange = accountDataForAddress
+    ? accountDataForAddress.nativeBalanceChange + feeForAddress
+    : 0;
+
+  const nativeBalanceChangeAbsLamports = lamports(
+    BigInt(Math.abs(nativeBalanceChange))
+  );
+
+  if (nativeBalanceChangeAbsLamports > 0n) {
+    // >= minimumSolTransfer
+    if (nativeBalanceChange > 0) {
+      // Received SOL
+      let fromAddresses = transaction.nativeTransfers
+        .filter(
+          (t) => t.toUserAccount === forAddress // && t.amount > minimumSolTransfer
+        )
+        .map((t) => t.fromUserAccount);
+      if (fromAddresses.length === 0) {
+        // If no native transfers, check for account data matching the amount
+        // Only works if there's exactly one transfer
+        const matchingAccountData = transaction.accountData.find(
+          (a) => a.nativeBalanceChange === -1 * nativeBalanceChange
+        );
+        if (matchingAccountData) {
+          fromAddresses = [matchingAccountData.account];
+        }
+      }
+
+      events.push({
+        kind: "received_sol",
+        lamports: nativeBalanceChangeAbsLamports,
+        from: fromAddresses,
+      });
+    } else {
+      // Sent SOL
+      const rentAmounts = getNewAccountRentCosts(transaction.instructions);
+      console.log({ signature: transaction.signature, rentAmounts });
+
+      // If there's no rent transfers, the sent SOL is the balance change
+      let rentAdjustedSentLamports = Number(nativeBalanceChangeAbsLamports);
+      const toAddresses: Address[] = [];
+
+      for (const transfer of transaction.nativeTransfers) {
+        if (transfer.fromUserAccount === forAddress) {
+          // filter out rent transfers
+          if (BigInt(transfer.amount) === rentAmounts[transfer.toUserAccount]) {
+            rentAdjustedSentLamports = Math.max(
+              0,
+              rentAdjustedSentLamports - transfer.amount
+            );
+          } else {
+            toAddresses.push(transfer.toUserAccount);
+          }
+        }
+      }
+
+      if (rentAdjustedSentLamports > 0) {
+        events.push({
+          kind: "sent_sol",
+          lamports: BigInt(rentAdjustedSentLamports),
+          to: toAddresses,
+        });
+      }
+    }
+  }
+
+  // Group transfers using the same mint
   const fungibleTokenTransfers: {
     [mintAddress: Address]: {
-      amount: number;
+      unitAmount: number;
+      decimals: number;
       toAddresses: Address[];
       fromAddresses: Address[];
     };
   } = {};
 
-  const events: TransactionEvent[] = [];
-
-  for (const transfer of transaction.tokenTransfers) {
-    if (transfer.fromUserAccount === forAddress && transfer.tokenAmount > 0) {
-      if (transfer.tokenStandard === "Fungible") {
-        fungibleTokenTransfers[transfer.mint] ??= {
-          amount: 0,
-          toAddresses: [],
-          fromAddresses: [],
-        };
-        fungibleTokenTransfers[transfer.mint].amount -= transfer.tokenAmount;
-        fungibleTokenTransfers[transfer.mint].toAddresses.push(
-          transfer.toUserAccount
-        );
+  // Get total token amounts sent/received
+  for (const accountData of transaction.accountData) {
+    for (const tokenBalanceChange of accountData.tokenBalanceChanges) {
+      if (tokenBalanceChange.userAccount === forAddress) {
+        const { tokenAmount, decimals } = tokenBalanceChange.rawTokenAmount;
+        const existingTranfer = fungibleTokenTransfers[tokenBalanceChange.mint];
+        if (existingTranfer) {
+          existingTranfer.unitAmount += Number(tokenAmount);
+        } else {
+          fungibleTokenTransfers[tokenBalanceChange.mint] = {
+            unitAmount: Number(tokenAmount),
+            decimals,
+            toAddresses: [],
+            fromAddresses: [],
+          };
+        }
       }
-      if (
-        transfer.tokenStandard === "NonFungible" ||
-        transfer.tokenStandard === "ProgrammableNonFungible"
-      ) {
+    }
+  }
+
+  // Get to/from addresses for token transfers
+  // Also create NFT events here
+  for (const transfer of transaction.tokenTransfers) {
+    if (transfer.tokenStandard === "Fungible") {
+      const fungibleTokenTransfer = fungibleTokenTransfers[transfer.mint];
+      if (fungibleTokenTransfer) {
+        if (transfer.fromUserAccount === forAddress) {
+          fungibleTokenTransfer.toAddresses.push(transfer.toUserAccount);
+        }
+        if (transfer.toUserAccount === forAddress) {
+          fungibleTokenTransfer.fromAddresses.push(transfer.fromUserAccount);
+        }
+      }
+    }
+    if (
+      transfer.tokenStandard === "NonFungible" ||
+      transfer.tokenStandard === "ProgrammableNonFungible"
+    ) {
+      if (transfer.toUserAccount === forAddress) {
+        events.push({
+          kind: "received_nft",
+          assetId: transfer.mint,
+          from: transfer.fromUserAccount,
+        });
+      }
+      if (transfer.fromUserAccount === forAddress) {
         events.push({
           kind: "sent_nft",
           assetId: transfer.mint,
@@ -135,91 +266,30 @@ export function summariseParsedTransaction(
         });
       }
     }
-    if (transfer.toUserAccount === forAddress && transfer.tokenAmount > 0) {
-      if (transfer.tokenStandard === "Fungible") {
-        fungibleTokenTransfers[transfer.mint] ??= {
-          amount: 0,
-          toAddresses: [],
-          fromAddresses: [],
-        };
-        fungibleTokenTransfers[transfer.mint].amount += transfer.tokenAmount;
-        fungibleTokenTransfers[transfer.mint].fromAddresses.push(
-          transfer.fromUserAccount
-        );
-      }
-      if (
-        transfer.tokenStandard === "NonFungible" ||
-        transfer.tokenStandard === "ProgrammableNonFungible"
-      ) {
-        events.push({
-          kind: "received_nft",
-          assetId: transfer.mint,
-          from: transfer.fromUserAccount,
-        });
-      }
-    }
   }
 
-  const newAccountRentCosts = getNewAccountRentCosts(transaction.instructions);
-  const solSentToAddresses: Address[] = [];
-  const solReceivedFromAddresses: Address[] = [];
-
-  for (const transfer of transaction.nativeTransfers) {
-    if (transfer.fromUserAccount === forAddress && transfer.amount > 0n) {
-      const createAccountLamports =
-        newAccountRentCosts[transfer.toUserAccount] ?? 0n;
-      // remove rent from SOL transfers from the user
-      // could go negative, which can't be converted to lamports
-      const sentSolThisTransfer =
-        totalSentSol + BigInt(transfer.amount) - createAccountLamports;
-      totalSentSol =
-        sentSolThisTransfer > 0n
-          ? lamports(totalSentSol + sentSolThisTransfer)
-          : totalSentSol;
-      solSentToAddresses.push(transfer.toUserAccount);
-    }
-    if (transfer.toUserAccount === forAddress && transfer.amount > 0n) {
-      totalReceivedSol = lamports(totalReceivedSol + BigInt(transfer.amount));
-      solReceivedFromAddresses.push(transfer.fromUserAccount);
-    }
-  }
-
-  if (totalSentSol > totalReceivedSol) {
-    events.push({
-      kind: "sent_sol",
-      lamports: totalSentSol - totalReceivedSol,
-      to: solSentToAddresses,
-    });
-  }
-  if (totalReceivedSol > totalSentSol) {
-    events.push({
-      kind: "received_sol",
-      lamports: totalReceivedSol - totalSentSol,
-      from: solReceivedFromAddresses,
-    });
-  }
-
-  for (const [mint, { amount, toAddresses, fromAddresses }] of Object.entries(
-    fungibleTokenTransfers
-  )) {
-    if (amount > 0) {
+  for (const [mint, transfer] of Object.entries(fungibleTokenTransfers)) {
+    if (transfer.unitAmount > 0) {
       events.push({
         kind: "received_token",
-        mint: mint as Address,
-        uiAmount: amount,
-        from: fromAddresses,
+        mint: address(mint),
+        unitAmount: BigInt(transfer.unitAmount),
+        decimals: transfer.decimals,
+        from: transfer.fromAddresses,
       });
     }
-    if (amount < 0) {
+    if (transfer.unitAmount < 0) {
       events.push({
         kind: "sent_token",
-        mint: mint as Address,
-        uiAmount: Math.abs(amount),
-        to: toAddresses,
+        mint: address(mint),
+        unitAmount: BigInt(Math.abs(transfer.unitAmount)),
+        decimals: transfer.decimals,
+        to: transfer.toAddresses,
       });
     }
   }
 
+  // Get NFT transfers from compressed events
   for (const event of transaction.events.compressed ?? []) {
     if (
       event.oldLeafOwner === forAddress &&
@@ -247,6 +317,8 @@ export function summariseParsedTransaction(
       });
     }
   }
+
+  const knownApp = knownApps[transaction.source];
 
   return {
     success: true,

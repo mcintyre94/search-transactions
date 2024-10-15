@@ -3,9 +3,9 @@ import type { Address, Signature } from '@solana/web3.js';
 import { formatNumber } from '../utils/number-display';
 import { TransactionSummary } from '../helius/summarise-transaction';
 import { getAssetsQueryData } from '../queries/assetQueries';
-import React from 'react';
 import { Text } from '@mantine/core';
 import { getAddressQueryData } from '../queries/addressQueries';
+import { useMemo } from 'react';
 
 export type TransactionRowData = {
     signature: Signature;
@@ -52,7 +52,7 @@ function getAssetFromEvent(event: TransactionSummary['events'][0], tokensData: A
         const tokenData = tokensData[event.assetId];
         if (tokenData) {
             return {
-                description: tokenData.name,
+                description: tokenData.name ?? 'Unknown NFT',
                 image: tokenData.image ?? undefined,
             };
         }
@@ -66,21 +66,13 @@ function getAssetFromEvent(event: TransactionSummary['events'][0], tokensData: A
     }
     if (event.kind === 'received_token' || event.kind === 'sent_token') {
         const tokenData = tokensData[event.mint];
+        const { unitAmount, decimals } = event;
+        const formattedAmount = formatNumber(unitAmount, decimals);
         if (!tokenData || tokenData.kind !== 'fungibleToken') {
             return {
-                description: `${event.uiAmount} of an unknown token`,
+                description: `${formattedAmount} of an unknown token`,
             };
         }
-        // If we don't know decimals, we can't use our formatter
-        // Helius uiAmount is good enough
-        if (!tokenData.decimals) {
-            return {
-                description: `${event.uiAmount} ${tokenData.symbol}`,
-                image: tokenData.image ?? undefined,
-            };
-        }
-        const amountAsBigint = BigInt(Math.floor(Number(event.uiAmount) * 10 ** Number(tokenData.decimals)));
-        const formattedAmount = formatNumber(amountAsBigint, Number(tokenData.decimals));
         return {
             description: `${formattedAmount} ${tokenData.symbol}`,
             image: tokenData.image ?? undefined,
@@ -299,6 +291,18 @@ type ActivityEventsProps = {
 };
 
 function ActivityEvents({ events, assetsData }: ActivityEventsProps) {
+    const sortedEvents = useMemo(() => [...events].sort((a, b) => {
+        const eventOrder = {
+            received_sol: 0,
+            received_token: 1,
+            received_nft: 2,
+            sent_sol: 3,
+            sent_token: 4,
+            sent_nft: 5,
+        };
+        return eventOrder[a.kind] - eventOrder[b.kind];
+    }), [events]);
+
     return (
         <div
             style={{
@@ -308,7 +312,7 @@ function ActivityEvents({ events, assetsData }: ActivityEventsProps) {
                 gap: '2px',
             }}
         >
-            {events.map((event, index) => (
+            {sortedEvents.map((event, index) => (
                 <ActivityEvent event={event} assetsData={assetsData} key={index} />
             ))}
         </div>
@@ -331,34 +335,36 @@ export function TransactionRow({ row, addressesData, assetsData }: ActivityRowPr
     const account = addressesData[row.feePayer];
 
     return (
-        <div
-            style={{
-                padding: '8px',
-                display: 'flex',
-                flexDirection: 'row',
-                gap: '1rem',
-                alignItems: 'center',
-                borderRadius: '8px',
-                backgroundColor: '#2D2B33',
-                width: '25rem',
-            }}
-        >
-            <ActivityRowIcon icon={icon} alt={title} />
+        <a href={`https://explorer.solana.com/tx/${row.signature}`} style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}>
             <div
                 style={{
+                    padding: '8px',
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.125rem',
-                    alignSelf: 'flex-start',
+                    flexDirection: 'row',
+                    gap: '1rem',
+                    alignItems: 'center',
+                    borderRadius: '8px',
+                    backgroundColor: '#2D2B33',
+                    width: '25rem',
                 }}
             >
-                <span>{account.label}</span>
-                <b>{title}</b>
-                <span>{subtitle}</span>
+                <ActivityRowIcon icon={icon} alt={title} />
+                <div
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.125rem',
+                        alignSelf: 'flex-start',
+                    }}
+                >
+                    <span>{account.label}</span>
+                    <b>{title}</b>
+                    <span>{subtitle}</span>
+                </div>
+                <div style={{ marginLeft: 'auto' }}>
+                    {row.events.length > 1 ? <ActivityEvents events={row.events} assetsData={assetsData} /> : null}
+                </div>
             </div>
-            <div style={{ marginLeft: 'auto' }}>
-                {row.events.length > 1 ? <ActivityEvents events={row.events} assetsData={assetsData} /> : null}
-            </div>
-        </div>
+        </a>
     );
 }

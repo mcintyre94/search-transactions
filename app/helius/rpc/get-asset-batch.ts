@@ -26,11 +26,12 @@ type FungibleTokenItem = Readonly<{
   content: {
     files: readonly ItemContentFile[];
     metadata: Readonly<{
-      name: string;
-      symbol: string;
+      name?: string;
+      symbol?: string;
     }>;
   };
   token_info: Readonly<{
+    symbol: string;
     decimals: BigInt; // could add this as a no bigint exception, but this works for now
   }>;
 }>;

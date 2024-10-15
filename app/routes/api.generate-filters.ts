@@ -1,6 +1,7 @@
 import { ActionFunctionArgs } from "react-router-dom";
 
 // Note: this file needs to run on the server because Claude won't accept requests from a browser
+// Was originally going to have users bring their own Claude API key, will need to re-think that!
 
 type FormDataUpdates = {
   filterDescription: string;
@@ -25,7 +26,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const headers = {
     "Content-Type": "application/json",
-    "X-API-Key": process.env.CLAUDE_API_KEY,
+    "X-API-Key": process.env.CLAUDE_API_KEY!,
     "anthropic-version": "2023-06-01",
     "anthropic-beta": "prompt-caching-2024-07-31",
   };
@@ -43,7 +44,7 @@ export async function action({ request }: ActionFunctionArgs) {
     messages: [
       {
         role: "user",
-        content: updates.filterDescription,
+        content: `Show transactions ${updates.filterDescription}`,
       },
     ],
   };

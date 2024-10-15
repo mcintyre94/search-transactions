@@ -2,7 +2,7 @@ import type { MetaFunction } from "@remix-run/node";
 import { Form, useActionData, useSubmit } from "react-router-dom"
 import { getAddressQueryData } from "../queries/addressQueries"
 import { getAssetsQueryData } from "../queries/assetQueries"
-import { AppShell, Badge, Button, Checkbox, Container, CopyButton, Group, Loader, PasswordInput, ScrollArea, Stack, Text, TextInput } from "@mantine/core"
+import { AppShell, Badge, Button, Checkbox, Container, CopyButton, Group, Loader, ScrollArea, Stack, Text, TextInput } from "@mantine/core"
 import { useMemo } from "react"
 import { useIsRestoring } from "@tanstack/react-query"
 import { Address, Signature } from "@solana/web3.js"
@@ -11,7 +11,6 @@ import { TransactionSummary } from "../helius/summarise-transaction"
 import { ClientActionFunctionArgs, useFetcher } from "@remix-run/react";
 import { TransactionRow } from "~/components/TransactionRow";
 import { applyFilter, Filter } from "~/filters/filter-summaries";
-import { d } from "node_modules/@tanstack/react-query-devtools/build/modern/devtools-PtxSnd7z";
 
 
 export const meta: MetaFunction = () => {
@@ -273,11 +272,12 @@ export default function DisplayTransactions() {
             <fetcher.Form method="POST" action="/api/generate-filters">
               <Stack gap='md'>
                 <TextInput
-                  label="Filter Transactions"
-                  placeholder="show transactions to Jupiter in the last week"
+                  label="Show transactions..."
+                  placeholder="to Jupiter in the last week"
                   name="filterDescription"
                   autoComplete="off"
                   required
+                  withAsterisk={false}
                 />
                 <Group><Button type='submit' disabled={fetcher.state === "submitting"}>Filter</Button></Group>
               </Stack>

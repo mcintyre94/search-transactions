@@ -11,7 +11,6 @@ import { fetchAndSaveAssetsQueryData, getAssetsQueryData } from "../queries/asse
 
 import "@mantine/dates/styles.css";
 import { ClientActionFunctionArgs } from "@remix-run/react";
-import { ClientOnly } from "remix-utils/client-only";
 
 
 type FormDataUpdates = {
@@ -104,19 +103,16 @@ export default function FetchTransactions() {
                         required
                     />
 
-                    <ClientOnly>
-                        {() =>
-                            <DateInput
-                                label="Fetch since"
-                                description="Fetch transactions since this date. Earlier dates will fetch more transactions, which will use more Helius RPC requests and take longer"
-                                name="fetchSince"
-                                clearable
-                                required
-                                defaultDate={startOfYearDate}
-                                minDate={new Date(2020, 4, 16)}
-                                valueFormat="DD MMM YYYY HH:mm"
-                            />}
-                    </ClientOnly>
+                    <DateInput
+                        label="Fetch since"
+                        description="Fetch transactions since this date. Earlier dates will fetch more transactions, which will use more Helius RPC requests and take longer"
+                        name="fetchSince"
+                        clearable
+                        required
+                        defaultDate={startOfYearDate}
+                        minDate={new Date(2020, 4, 16)}
+                        valueFormat="DD MMM YYYY HH:mm"
+                    />
 
                     <Group><Button type="submit">Fetch transactions</Button></Group>
                 </Stack>

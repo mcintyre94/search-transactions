@@ -4,7 +4,7 @@ type HeliusAsset = GetAssetBatchResponse[number];
 
 type SummarisedFungibleToken = {
   kind: "fungibleToken";
-  name: string;
+  name?: string;
   symbol: string;
   decimals: number;
   image?: string;
@@ -30,7 +30,7 @@ export function summariseAsset(asset: HeliusAsset): SummarisedAsset {
     return {
       kind: "fungibleToken",
       name: asset.content.metadata.name,
-      symbol: asset.content.metadata.symbol,
+      symbol: asset.content.metadata.symbol ?? asset.token_info.symbol,
       decimals: Number(asset.token_info.decimals),
       image,
     };
